@@ -1,0 +1,8 @@
+{
+  "launcher": {
+    "launcher": true,
+    "uwc": true,
+    "autologon": true,
+    "uwcPullScripts": true
+  }
+}

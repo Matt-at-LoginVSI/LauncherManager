@@ -1,0 +1,6 @@
+machine_name,ip_address,credential_id,managed_policy_id
+Test-01,10.10.10.200,2,2
+Test-02,10.10.10.201,2,2
+Test-03,10.10.10.202,2,2
+Test-04,10.10.10.203,2,2
+Test-05,10.10.10.204,2,2

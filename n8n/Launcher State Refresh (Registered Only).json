@@ -1,0 +1,524 @@
+{
+  "name": "Launcher State Refresh (Registered Only)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "d8f85f28-6c59-442e-b767-743144e1cfec",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Telemetry-only refresh. No discovery."
+    },
+    {
+      "parameters": {
+        "url": "=https://{{$env.LE_FQDN}}/publicApi/v7/launchers",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.LE_API_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cb882824-307d-4056-b1cd-7c8beaa14c74",
+      "name": "Fetch LE Launchers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        256,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT machine_name FROM launchers;",
+        "options": {}
+      },
+      "id": "470acadc-89d0-4d85-8eb7-771bf29c41ce",
+      "name": "Get Registered Launchers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        480,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "Cyo7DfHWL1ArQucz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const leItems = $items('Fetch LE Launchers')[0]?.json?.items ?? [];\nconst registeredRows = $items('Get Registered Launchers') ?? [];\nconst registered = registeredRows.map(r => r.json.machine_name);\n\nconst rows = [];\nlet ignored = 0;\n\nfor (const it of leItems) {\n  if (!registered.includes(it.machineName)) {\n    ignored++;\n    continue;\n  }\n\n  const props = {};\n  if (Array.isArray(it.properties)) {\n    for (const p of it.properties) {\n      if (p.propertyId && p.value !== undefined) {\n        props[p.propertyId] = p.value;\n      }\n    }\n  } else if (typeof it.properties === 'object' && it.properties !== null) {\n    Object.assign(props, it.properties);\n  }\n\n  rows.push({\n    machine_name: it.machineName,\n    online: it.online ?? null,\n    sessions: it.sessions ?? null,\n    supported_version: it.supportedVersion ?? null,\n    current_version: it.currentVersion ?? null,\n    first_seen: it.firstSeen ? new Date(it.firstSeen).toISOString() : null,\n    last_state_change: it.lastStateChange ? new Date(it.lastStateChange).toISOString() : null,\n    properties: props,\n    groups: { items: Array.isArray(it.groups) ? it.groups : [] },\n    last_synced_at: new Date().toISOString()\n  });\n}\n\nreturn rows.map(r => ({ json: r }));"
+      },
+      "id": "a722bc1d-3ac0-43e6-b0d3-9c4276bcaf49",
+      "name": "Filter Registered + Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": "public",
+        "table": "launchers",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "online": "={{ $json.online }}",
+            "sessions": "={{ $json.sessions }}",
+            "supported_version": "={{ $json.supported_version }}",
+            "current_version": "={{ $json.current_version }}",
+            "last_state_change": "={{ $json.last_state_change }}",
+            "properties": "={{ $json.properties }}",
+            "groups": "={{ $json.groups }}",
+            "last_synced_at": "={{ $json.last_synced_at }}",
+            "machine_name": "={{ $json.machine_name }}",
+            "first_seen": "={{ $json.first_seen }}"
+          },
+          "matchingColumns": [
+            "machine_name"
+          ],
+          "schema": [
+            {
+              "id": "machine_name",
+              "displayName": "machine_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ip_address",
+              "displayName": "ip_address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "supported_version",
+              "displayName": "supported_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sessions",
+              "displayName": "sessions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "current_version",
+              "displayName": "current_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "online",
+              "displayName": "online",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "first_seen",
+              "displayName": "first_seen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_state_change",
+              "displayName": "last_state_change",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location_id",
+              "displayName": "location_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "managed_policy_id",
+              "displayName": "managed_policy_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "properties",
+              "displayName": "properties",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "groups",
+              "displayName": "groups",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_synced_at",
+              "displayName": "last_synced_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ssh_host",
+              "displayName": "ssh_host",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "ssh_port",
+              "displayName": "ssh_port",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "credential_id",
+              "displayName": "credential_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "last_commissioned_at",
+              "displayName": "last_commissioned_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "launcher_version",
+              "displayName": "launcher_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "uwc_bundle_version",
+              "displayName": "uwc_bundle_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "autologon_enabled",
+              "displayName": "autologon_enabled",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "secure_launcher_enabled",
+              "displayName": "secure_launcher_enabled",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "3a3ed764-5926-4188-b389-945ed57fe4fc",
+      "name": "Update Launcher State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1008,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Cyo7DfHWL1ArQucz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const checked = $items('Fetch LE Launchers')[0]?.json?.items?.length ?? 0;\nconst updated = items.length;\nconst ignored = checked - updated;\n\nreturn [{ json: { checked, updated, ignored } }];"
+      },
+      "id": "71bd72c9-ec36-4704-9caf-b1d7094a51a7",
+      "name": "Build Sync Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "schema": "public",
+        "table": "sync_runs",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "source": "le-telemetry",
+            "started_at": "={{ $now.minus({ minutes: 5 }) }}",
+            "finished_at": "={{ $now }}",
+            "status": "ok",
+            "details": "={{ { checked: $json.checked, updated: $json.updated, ignored: $json.ignored } }}",
+            "id": 0
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "finished_at",
+              "displayName": "finished_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "3568f9e9-56e9-4873-a12b-d07693d4a3c4",
+      "name": "Insert Sync Run (Success)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1488,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Cyo7DfHWL1ArQucz",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch LE Launchers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch LE Launchers": {
+      "main": [
+        [
+          {
+            "node": "Get Registered Launchers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Registered Launchers": {
+      "main": [
+        [
+          {
+            "node": "Filter Registered + Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Registered + Normalize": {
+      "main": [
+        [
+          {
+            "node": "Update Launcher State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Launcher State": {
+      "main": [
+        [
+          {
+            "node": "Build Sync Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sync Metrics": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "bb2d336e-9407-458c-b9c9-526c68902af9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "55e85a5b36aa528ef514caa50d1b362401d1fe8f3c837e16af9c6b5c23c9e16e"
+  },
+  "id": "SMAl1p1EQNLw6TnR",
+  "tags": []
+}

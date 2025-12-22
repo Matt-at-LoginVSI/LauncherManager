@@ -1,0 +1,291 @@
+{
+  "name": "LE Launcher Groups Sync (Registered Only, No Meta)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "1c06e186-310c-4884-9f8c-19c9df0ce3e2",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1488,
+        208
+      ],
+      "notes": "Sync launcher_groups + launcher_group_members from LE, but ONLY for launchers already registered in LM (public.launchers). No discovery. No meta/totalCount paging; pages until empty."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT machine_name FROM public.launchers;",
+        "options": {}
+      },
+      "id": "bfeea8f4-a0a2-4524-9d2e-f40d63752e5c",
+      "name": "Get Registered Launchers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1280,
+        208
+      ],
+      "executeOnce": false,
+      "credentials": {
+        "postgres": {
+          "id": "Cyo7DfHWL1ArQucz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://{{$env.LE_FQDN}}/publicApi/v7/launcher-groups\n?orderBy=name\n&direction=asc\n&count=100\n&offset={{ $json.offset || 0 }}\n&include=members\n&includeTotalCount=false",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.LE_API_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f8bd5621-9697-4fde-8370-095e88d4dd28",
+      "name": "Fetch Groups (Page)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -624,
+        208
+      ],
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "47baf70e-2bfb-4ba8-9cc2-da97f4451f86",
+              "leftValue": "={{ $json.__stopPaging }}",
+              "rightValue": "=true",
+              "operator": {
+                "type": "boolean",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "09c35666-bcbf-4e8c-ac20-d99ad194c81b",
+      "name": "Stop Paging?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ok: true } }];"
+      },
+      "id": "2a43402e-5786-4005-9bf3-ae6dc2657896",
+      "name": "Continue Groups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pageSize = 100;\nconst maxPages = 5; // Safety Brake: Stop after 500 items\n\n// If we have run too many times, stop the workflow\nif ($runIndex > maxPages) {\n  throw new Error(\"Safety Brake: Loop limit reached.\");\n}\n\nreturn [{\n  json: {\n    offset: ($runIndex + 1) * pageSize\n  }\n}];"
+      },
+      "id": "3ffd4db3-839b-46c1-9d86-c2432cf9fd80",
+      "name": "Next Offset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        224
+      ],
+      "notes": "Increment offset by page size and loop back to Fetch Groups (Page)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const esc = (v) => String(v ?? '').replace(/'/g, \"''\");\n\n// Groups from LE API\nconst groups = $json.items ?? [];\n\n// STOP PAGING if no groups returned\nif (!Array.isArray(groups) || groups.length === 0) {\n  return [{ json: { __stopPaging: true } }];\n}\n\n// -----------------------------------------------------------\n// 1. Build Strict Allow List (Exact Case)\n// -----------------------------------------------------------\nconst registeredRows = $items('Get Registered Launchers') ?? [];\n// using a Set for simple existence check\nconst registeredSet = new Set();\n\nfor (const row of registeredRows) {\n  const dbName = row.json.machine_name;\n  if (dbName) {\n    // Store EXACT database casing\n    registeredSet.add(dbName);\n  }\n}\n\nconst out = [];\n\nfor (const g of groups) {\n  const groupId = g.id ?? g.groupId;\n  if (!groupId) continue;\n\n  const rawMembers = Array.isArray(g.members) ? g.members : [];\n  const membersFiltered = [];\n  const seen = new Set();\n\n  for (const m of rawMembers) {\n    // Get exact name from API\n    const apiName = m.machineName ?? m.machine_name;\n    if (!apiName) continue;\n\n    // -----------------------------------------------------------\n    // 2. Strict Filter (Case-Sensitive)\n    // -----------------------------------------------------------\n    // \"lab-launcher-01\" === \"lab-launcher-01\"  -> TRUE (Keep)\n    // \"LAB-LAUNCHER-01\" === \"lab-launcher-01\"  -> FALSE (Ignore)\n    if (registeredSet.has(apiName)) {\n        if (!seen.has(apiName)) {\n            seen.add(apiName);\n            membersFiltered.push(apiName);\n        }\n    }\n  }\n\n  const name = g.name ?? '';\n  const type = g.type ?? null;\n  const filter = g.filter ?? null;\n  const description = g.description ?? null;\n  const memberCount = Number.isFinite(g.memberCount) ? g.memberCount : null;\n  const created = g.created ?? null;\n  const lastModified = g.lastModified ?? null;\n\n  // Prepare JSONB for 'members' column\n  const membersJson = JSON.stringify(membersFiltered);\n\n  // 3. Prepare Upsert\n  const sql_upsert = `\n    INSERT INTO public.launcher_groups (\n      id, name, type, filter, description, member_count, members, created, last_modified, last_synced_at\n    ) VALUES (\n      '${esc(groupId)}', '${esc(name)}',\n      ${type ? `'${esc(type)}'` : 'NULL'},\n      ${filter ? `'${esc(filter)}'` : 'NULL'},\n      ${description ? `'${esc(description)}'` : 'NULL'},\n      ${memberCount !== null ? memberCount : 'NULL'},\n      '${esc(membersJson)}',\n      ${created ? `'${esc(created)}'` : 'NULL'},\n      ${lastModified ? `'${esc(lastModified)}'` : 'NULL'},\n      now()\n    )\n    ON CONFLICT (id) DO UPDATE SET\n      name = EXCLUDED.name,\n      type = EXCLUDED.type,\n      filter = EXCLUDED.filter,\n      description = EXCLUDED.description,\n      member_count = EXCLUDED.member_count,\n      members = EXCLUDED.members,\n      created = EXCLUDED.created,\n      last_modified = EXCLUDED.last_modified,\n      last_synced_at = EXCLUDED.last_synced_at;\n  `;\n\n  // 4. Prepare Delete\n  const sql_delete_members = \n    `DELETE FROM public.launcher_group_members WHERE group_id = '${esc(groupId)}';`;\n\n  // 5. Prepare Insert\n  let sql_insert_members = null;\n  if (membersFiltered.length > 0) {\n    const values = membersFiltered\n      .map(mn => `('${esc(groupId)}','${esc(mn)}',now())`)\n      .join(',\\n');\n\n    sql_insert_members = `\n      INSERT INTO public.launcher_group_members (group_id, machine_name, added_at)\n      VALUES ${values}\n      ON CONFLICT (group_id, machine_name) DO NOTHING;\n    `;\n  }\n\n  const sql_execution_block = [\n    sql_upsert,\n    sql_delete_members,\n    sql_insert_members\n  ].filter(Boolean).join('\\n');\n\n  out.push({\n    group_id: groupId,\n    group_name: name,\n    member_match_count: membersFiltered.length,\n    members_list: membersFiltered,\n    sql_execution_block\n  });\n}\n\nreturn out.map(x => ({ json: x }));"
+      },
+      "id": "e2439df3-d791-4f84-b0b6-9785d5a5b04a",
+      "name": "Build Sync Transaction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json.sql_execution_block}}",
+        "options": {}
+      },
+      "id": "1e9811d1-465c-48d9-82e4-31cee2fa9b31",
+      "name": "Upsert Groups and Members",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        128,
+        224
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Cyo7DfHWL1ArQucz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        208
+      ],
+      "id": "c3f366e4-426c-4935-bc11-7d5db5f38894",
+      "name": "Limit"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Registered Launchers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Groups (Page)": {
+      "main": [
+        [
+          {
+            "node": "Build Sync Transaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop Paging?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Upsert Groups and Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Offset": {
+      "main": [
+        [
+          {
+            "node": "Fetch Groups (Page)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Registered Launchers": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue Groups": {
+      "main": [
+        [
+          {
+            "node": "Next Offset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sync Transaction": {
+      "main": [
+        [
+          {
+            "node": "Stop Paging?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Groups and Members": {
+      "main": [
+        [
+          {
+            "node": "Continue Groups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Fetch Groups (Page)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "85470ec8-2353-4185-be7c-6165d5a7642d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "55e85a5b36aa528ef514caa50d1b362401d1fe8f3c837e16af9c6b5c23c9e16e"
+  },
+  "id": "MKIaxdQq8tC1VtM6",
+  "tags": []
+}
