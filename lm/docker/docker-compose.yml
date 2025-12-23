@@ -3,7 +3,6 @@ services:
     image: postgres:16-alpine
     container_name: lm-postgres
     restart: unless-stopped
-    # Removed secret: pg_password
     environment:
       POSTGRES_USER: ${PGUSER}
       POSTGRES_PASSWORD: ${PGPASSWORD}
@@ -27,8 +26,6 @@ services:
     env_file:
       - /opt/lm/env/.env
     secrets:
-      # Removed: pg_password, encryption_key, rundeck_token, le_api_token
-      # Kept: SSH keys (as requested)
       - source: le_ssh_pass
         target: le_ssh_pass
       - source: lm_ssh_pass
@@ -41,7 +38,6 @@ services:
       DB_PASS: ${PGPASSWORD}
       RUNDECK_URL: https://${LM_FQDN}/rundeck
       RUNDECK_TOKEN: ${RUNDECK_TOKEN}
-      # Explicitly mapping these to ensure the app finds them in Env if not in Secrets
       LE_API_TOKEN: ${LE_API_TOKEN}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
     volumes:
@@ -111,7 +107,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Removed secret: pg_password
     environment:
       RUNDECK_GRAILS_URL: "https://${LM_FQDN}/rundeck"
       RUNDECK_SERVER_FORWARDED: "true"
@@ -174,7 +169,6 @@ services:
       - /opt/lm/traefik:/traefik:ro
 
 secrets:
-  # Only keeping the SSH keys as requested
   le_ssh_pass:
     file: /opt/lm/env/le_ssh_pass.txt
   lm_ssh_pass:
