@@ -71,8 +71,6 @@ services:
       N8N_PORT: 5678
       N8N_PROTOCOL: https
       N8N_BASIC_AUTH_ACTIVE: "true"
-      # N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
-      # N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
