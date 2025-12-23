@@ -1,0 +1,14 @@
+<Configuration>
+  <Networking>Enable</Networking>
+  <VGpu>Disable</VGpu>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\HostFolder</HostFolder>
+	  <SandboxFolder>C:\SandboxFolder</SandboxFolder> 
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell -executionPolicy bypass -file "C:\SandboxFolder\InstallLauncher.ps1"</Command>
+  </LogonCommand>
+</Configuration>

@@ -1,0 +1,181 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lm-postgres
+    restart: unless-stopped
+    # Removed secret: pg_password
+    environment:
+      POSTGRES_USER: ${PGUSER}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+      POSTGRES_DB: ${PGDATABASE}
+    volumes:
+      - /opt/lm/data/postgres:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./api
+    container_name: lm-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - /opt/lm/env/.env
+    secrets:
+      # Removed: pg_password, encryption_key, rundeck_token, le_api_token
+      # Kept: SSH keys (as requested)
+      - source: le_ssh_pass
+        target: le_ssh_pass
+      - source: lm_ssh_pass
+        target: lm_ssh_pass
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${PGDATABASE}
+      DB_USER: ${PGUSER}
+      DB_PASS: ${PGPASSWORD}
+      RUNDECK_URL: https://${LM_FQDN}/rundeck
+      RUNDECK_TOKEN: ${RUNDECK_TOKEN}
+      # Explicitly mapping these to ensure the app finds them in Env if not in Secrets
+      LE_API_TOKEN: ${LE_API_TOKEN}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+    volumes:
+      - /opt/lm/docker/api/app:/app
+      - /opt/lm/env:/env_mount
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lmapi-api.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.lmapi-api.entrypoints=websecure"
+      - "traefik.http.routers.lmapi-api.service=lmapi-svc"
+      - "traefik.http.routers.lmapi-ui.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.lmapi-ui.entrypoints=websecure"
+      - "traefik.http.routers.lmapi-ui.priority=1"
+      - "traefik.http.routers.lmapi-ui.service=lmapi-svc"
+      - "traefik.http.services.lmapi-svc.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: lm-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      N8N_HOST: ${LM_FQDN}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      # N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      # N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${PGUSER}
+      DB_POSTGRESDB_PASSWORD: ${PGPASSWORD}      
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}      
+      N8N_PATH: /n8n
+      WEBHOOK_URL: https://${LM_FQDN}/n8n/
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      LE_FQDN: ${LE_FQDN}
+      LE_API_TOKEN: ${LE_API_TOKEN}
+      NODE_TLS_REJECT_UNAUTHORIZED: 0
+      N8N_TRUSTED_PROXIES: "*"
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_GIT_NODE_DISABLE_BARE_REPOS: "true"
+    volumes:
+      - /opt/lm/data/n8n:/home/node/.n8n
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=PathPrefix(`/n8n`)"
+      - "traefik.http.routers.n8n.middlewares=n8n-strip"
+      - "traefik.http.middlewares.n8n-strip.stripprefix.prefixes=/n8n"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+
+  rundeck:
+    build: ./rundeck
+    image: le-mgr/rundeck:latest
+    container_name: lm-rundeck
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Removed secret: pg_password
+    environment:
+      RUNDECK_GRAILS_URL: "https://${LM_FQDN}/rundeck"
+      RUNDECK_SERVER_FORWARDED: "true"
+      RUNDECK_SERVER_ADDRESS: "0.0.0.0"
+      RUNDECK_SERVER_PORT: "4440"
+      RUNDECK_DATABASE_DRIVER: org.postgresql.Driver
+      RUNDECK_DATABASE_URL: "jdbc:postgresql://postgres:5432/${PGDATABASE}"
+      RUNDECK_DATABASE_USERNAME: "${PGUSER}"
+      RUNDECK_DATABASE_PASSWORD: "${PGPASSWORD}"
+      RUNDECK_USERNAME: "admin"
+      RUNDECK_PASSWORD: "${RUNDECK_ADMIN_PASSWORD}"
+      SERVER_CONTEXT_PATH: "/rundeck"
+      RUNDECK_JETTY_CONTEXTPATH: "/rundeck"
+      RUNDECK_SERVER_CONTEXTPATH: "/rundeck"
+      RUNDECK_API_TOKENS_DURATION_MAX: "0d"
+      RUNDECK_SECURITY_API_BASICAUTH_ENABLED: "true"
+      RUNDECK_SECURITY_API_TOKENAUTH_ENABLED: "true"
+      RUNDECK_SECURITY_API_SESSIONAUTH_ENABLED: "true"
+    expose:
+      - "4440"
+    volumes:
+      - /opt/lm/data/rundeck/data:/home/rundeck/server/data
+      - /opt/lm/data/rundeck/logs:/home/rundeck/var/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: root
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rundeck.rule=PathPrefix(`/rundeck`)"
+      - "traefik.http.routers.rundeck.entrypoints=websecure"
+      - "traefik.http.services.rundeck.loadbalancer.server.port=4440"
+
+  xfreerdp:
+    build: ./xfreerdp
+    image: le-mgr/xfreerdp:latest
+    container_name: lm-xfreerdp
+    network_mode: host
+    profiles: ["tools"]
+
+  traefik:
+    image: traefik:v3.0
+    container_name: lm-traefik
+    restart: unless-stopped
+    depends_on:
+      rundeck:
+        condition: service_started
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.watch=true"
+      - "--providers.docker.network=docker_default"
+      - "--providers.file.filename=/traefik/dynamic.yml"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      - "--serversTransport.insecureSkipVerify=true"
+      - "--api=false"
+    ports:
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/lm/certs:/certs:ro
+      - /opt/lm/traefik:/traefik:ro
+
+secrets:
+  # Only keeping the SSH keys as requested
+  le_ssh_pass:
+    file: /opt/lm/env/le_ssh_pass.txt
+  lm_ssh_pass:
+    file: /opt/lm/env/lm_ssh_pass.txt

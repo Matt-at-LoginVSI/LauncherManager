@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Launcher Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: url('/static/img/Updated_Background.png') no-repeat center center fixed; 
+            background-size: cover;
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-card {
+            background: white;
+            width: 100%;
+            max-width: 550px; /* Nice wide rectangle */
+            padding: 50px 60px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); /* Very subtle shadow */
+            box-sizing: border-box;
+        }
+
+        /* --- Header Section --- */
+        .login-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 50px;
+        }
+
+        .login-logo {
+            height: 32px; /* Adjusted to match reference size */
+            margin-right: 12px;
+        }
+
+        .app-title {
+            font-size: 1.5rem;
+            color: #555;
+            font-weight: 300; /* Thin, elegant look */
+            letter-spacing: 0.5px;
+        }
+
+        .version-tag {
+            font-size: 0.9rem;
+            color: #99a;
+            margin-left: 8px;
+            position: relative;
+            top: 2px;
+        }
+
+        /* --- Form Inputs (Material Style) --- */
+        .form-group {
+            margin-bottom: 35px;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: #333;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px 0; /* No side padding */
+            font-size: 1rem;
+            color: #555;
+            border: none;
+            border-bottom: 1px solid #ddd; /* The Underline */
+            outline: none;
+            transition: border-color 0.3s;
+            background: transparent;
+        }
+
+        .form-group input:focus {
+            border-bottom-color: #888;
+        }
+
+        .form-group input::placeholder {
+            color: #aaa;
+            font-weight: 300;
+        }
+
+        /* --- Button Section --- */
+        .form-actions {
+            display: flex;
+            justify-content: flex-end; /* Pushes button to right */
+            margin-top: 40px;
+        }
+
+        .btn-login {
+            background-color: #eee;
+            color: #444;
+            border: 1px solid #ddd;
+            padding: 10px 30px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .btn-login:hover {
+            background-color: #e0e0e0;
+            border-color: #ccc;
+        }
+
+        /* --- Error Message --- */
+        .error-msg {
+            color: #d9534f;
+            font-size: 0.9rem;
+            margin-top: 20px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="login-header">
+            <img src="/static/img/LE_80.png" alt="Logo" class="login-logo">
+            <span class="app-title">LOGIN ENTERPRISE LAUNCHER MANAGER</span> 
+            <span id="le-version" class="version-tag">...</span>
+        </div>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label>Login Enterprise Username</label>
+                <input type="text" id="username" placeholder="Enter your username" required>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="Enter your password" required>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn-login">LOGIN</button>
+            </div>
+            
+            <div id="errorMsg" class="error-msg">Invalid credentials</div>
+        </form>
+    </div>
+
+    <script>
+        // 1. Fetch Version
+        async function loadVersion() {
+            try {
+                const res = await fetch('/api/le-version'); 
+                if(res.ok) {
+                    const data = await res.json();
+                    document.getElementById('le-version').textContent = data.version || "";
+                }
+            } catch (e) { console.error("Ver check failed", e); }
+        }
+
+        // 2. Login Handler
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMsg');
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+
+                if (res.ok) {
+                    window.location.href = "/"; 
+                } else {
+                    errorDiv.style.display = 'block';
+                    errorDiv.textContent = "Invalid credentials";
+                }
+            } catch (err) {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = "Connection error";
+            }
+        });
+
+        loadVersion();
+    </script>
+</body>
+</html>

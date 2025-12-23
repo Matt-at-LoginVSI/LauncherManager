@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Launcher Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="/static/img/LE_80.png" alt="Login Enterprise" class="le-logo" />
+        <div class="sidebar-title">Login Enterprise Launcher Manager</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="launchers">Launchers</button>
+        <button class="nav-item" data-view="policies">Policies</button>
+        <button class="nav-item" data-view="credentials">Credentials</button>
+        <button class="nav-item" data-view="events">Events</button>
+      </nav>
+    </aside>
+
+    <!-- Main content area -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span id="section-title" class="section-title">LAUNCHERS</span>
+        </div>
+        <div class="topbar-right">
+          <span id="le-version-label" class="le-version-label">
+            Login Enterprise: ...
+          </span>
+        </div>
+      </header>
+
+      <main id="main-content" class="main-content">
+        <!-- Views are injected here -->
+      </main>
+    </div>
+  </div>
+
+  <!-- Global loading overlay -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Modal root -->
+  <div id="modal-root" class="modal-root"></div>
+
+  <link rel="stylesheet" href="/static/css/main.css" />
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/realtime.js"></script>
+  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/launchers.js"></script>
+  <script src="/static/js/policies.js"></script>
+  <script src="/static/js/credentials.js"></script>
+  <script src="/static/js/events.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
